@@ -5,7 +5,8 @@ import type {
   TableData,
   TableInfo,
   ColumnInfo,
-  QueryHistoryEntry
+  QueryHistoryEntry,
+  SavedQuery
 } from './types'
 
 declare global {
@@ -86,6 +87,16 @@ declare global {
         list(connectionId?: string): Promise<QueryHistoryEntry[]>
         clear(connectionId?: string): Promise<void>
       }
+      savedQueries: {
+        list(connectionId?: string | null): Promise<SavedQuery[]>
+        save(payload: {
+          id?: string
+          name: string
+          sql: string
+          connectionId?: string | null
+        }): Promise<SavedQuery>
+        delete(id: string): Promise<void>
+      }
       session: {
         get(): Promise<{
           activeConnectionId: string | null
@@ -97,6 +108,7 @@ declare global {
             mode: 'query' | 'table'
             tableMeta: { schema: string; table: string; connectionId: string } | null
             connectionId: string | null
+            savedQueryId?: string | null
           }[]
         }>
         save(session: {
@@ -109,6 +121,7 @@ declare global {
             mode: 'query' | 'table'
             tableMeta: { schema: string; table: string; connectionId: string } | null
             connectionId: string | null
+            savedQueryId?: string | null
           }[]
         }): Promise<void>
       }

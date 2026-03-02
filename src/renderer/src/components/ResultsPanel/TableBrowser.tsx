@@ -27,7 +27,7 @@ type FilterMode = 'query' | 'search'
 const PAGE_SIZE = 200
 
 export function TableBrowser({ tab }: { tab: EditorTab }): JSX.Element {
-  const { updateTab } = useAppStore()
+  const { updateTab, tableInvalidationTrigger } = useAppStore()
   const meta = tab.tableMeta!
 
   const [page, setPage] = useState(0)
@@ -66,6 +66,8 @@ export function TableBrowser({ tab }: { tab: EditorTab }): JSX.Element {
   matchRowsRef.current = matchRows
   const matchIdxRef = useRef(matchIdx)
   matchIdxRef.current = matchIdx
+  const activeFilterRef = useRef(activeFilter)
+  activeFilterRef.current = activeFilter
 
   const fetchPage = useCallback(
     async (pageNum: number, sort: SortState = sortRef.current, filter: string = activeFilter) => {
@@ -102,6 +104,12 @@ export function TableBrowser({ tab }: { tab: EditorTab }): JSX.Element {
   useEffect(() => {
     if (!tab.tableData) fetchPage(0, null, '')
   }, [tab.id])
+
+  useEffect(() => {
+    if (tableInvalidationTrigger.connectionId === meta.connectionId && tableInvalidationTrigger.at > 0) {
+      fetchPage(pageRef.current, sortRef.current, activeFilterRef.current)
+    }
+  }, [tableInvalidationTrigger.at, tableInvalidationTrigger.connectionId, meta.connectionId, fetchPage])
 
   // Clear row selection when switching between tabs (but keep pending edits)
   useEffect(() => {

@@ -24,6 +24,15 @@ export interface QueryHistoryEntry {
   rowCount?: number
 }
 
+export interface SavedQuery {
+  id: string
+  name: string
+  sql: string
+  connectionId: string | null
+  createdAt: number
+  updatedAt: number
+}
+
 export interface AppSettings {
   theme: 'auto' | 'dark' | 'light'
   editorFontSize: number
@@ -38,6 +47,7 @@ export interface SessionTab {
   mode: 'query' | 'table'
   tableMeta: { schema: string; table: string; connectionId: string } | null
   connectionId: string | null
+  savedQueryId?: string | null
 }
 
 export interface SessionState {
@@ -49,6 +59,7 @@ export interface SessionState {
 interface StoreSchema {
   connections: SavedConnection[]
   queryHistory: QueryHistoryEntry[]
+  savedQueries: SavedQuery[]
   settings: AppSettings
   session: SessionState
 }
@@ -58,6 +69,7 @@ export const store = new Store<StoreSchema>({
   defaults: {
     connections: [],
     queryHistory: [],
+    savedQueries: [],
     settings: {
       theme: 'auto',
       editorFontSize: 13,

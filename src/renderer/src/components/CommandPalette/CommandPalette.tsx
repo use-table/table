@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Command } from 'cmdk'
 import { useAppStore } from '../../store/useAppStore'
-import { Table2, Eye, Columns, PlugZap, Plus, Loader2, ChevronDown, Check } from 'lucide-react'
+import { Table2, Eye, Columns, PlugZap, Plus, Loader2, ChevronDown, Check, Bookmark } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import type { TableInfo, ColumnInfo } from '../../types'
 
@@ -22,11 +22,13 @@ export function CommandPalette(): JSX.Element {
     connectedIds,
     connections,
     schemaStates,
+    savedQueries,
     openTableBrowser,
     openConnectionDialog,
     connectToDb,
     setActiveConnection,
     loadTables,
+    openSavedQueryInEditor,
   } = useAppStore()
 
   const [connectingId, setConnectingId] = useState<string | null>(null)
@@ -111,6 +113,10 @@ export function CommandPalette(): JSX.Element {
   const isSearching = search.trim().length > 0
   const visibleTables = (isSearching || showAllTables) ? allTables : allTables.slice(0, TABLE_PREVIEW_COUNT)
   const hasMoreTables = !isSearching && allTables.length > TABLE_PREVIEW_COUNT
+
+  const visibleSavedQueries = activeConnectionId
+    ? savedQueries.filter((q) => q.connectionId === activeConnectionId || q.connectionId === null)
+    : savedQueries
 
   const handleSelectTable = (schema: string, table: string): void => {
     if (!activeConnectionId) return
@@ -242,7 +248,27 @@ export function CommandPalette(): JSX.Element {
           </Command.Group>
         )}
 
-        {(isConnected && (allTables.length > 0 || allColumns.length > 0)) && (
+        {/* Saved Queries — when connected */}
+        {isConnected && visibleSavedQueries.length > 0 && (
+          <Command.Group heading="Saved Queries">
+            {visibleSavedQueries.map((q) => (
+              <Command.Item
+                key={q.id}
+                value={q.name}
+                onSelect={() => {
+                  openSavedQueryInEditor(q.sql, q.id, q.name)
+                  closeCommandPalette()
+                }}
+                className={ITEM_CLASS}
+              >
+                <Bookmark className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="flex-1 truncate">{q.name}</span>
+              </Command.Item>
+            ))}
+          </Command.Group>
+        )}
+
+        {(isConnected && (allTables.length > 0 || allColumns.length > 0 || visibleSavedQueries.length > 0)) && (
           <Command.Separator className="-mx-2 my-1 h-px bg-border" alwaysRender />
         )}
 

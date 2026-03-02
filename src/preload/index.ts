@@ -77,6 +77,7 @@ export interface SessionTab {
   mode: 'query' | 'table'
   tableMeta: { schema: string; table: string; connectionId: string } | null
   connectionId: string | null
+  savedQueryId?: string | null
 }
 
 export interface SessionState {
@@ -181,6 +182,17 @@ const api = {
       ipcRenderer.invoke('history:list', connectionId),
     clear: (connectionId?: string): Promise<void> =>
       ipcRenderer.invoke('history:clear', connectionId)
+  },
+  savedQueries: {
+    list: (connectionId?: string | null) =>
+      ipcRenderer.invoke('savedQueries:list', connectionId),
+    save: (payload: {
+      id?: string
+      name: string
+      sql: string
+      connectionId?: string | null
+    }) => ipcRenderer.invoke('savedQueries:save', payload),
+    delete: (id: string) => ipcRenderer.invoke('savedQueries:delete', id)
   },
   session: {
     get: (): Promise<SessionState> => ipcRenderer.invoke('session:get'),

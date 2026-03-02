@@ -67,3 +67,12 @@ export interface QueryHistoryEntry {
   durationMs?: number
   rowCount?: number
 }
+
+export interface SavedQuery {
+  id: string
+  name: string
+  sql: string
+  connectionId: string | null
+  createdAt: number
+  updatedAt: number
+}

@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import type { SavedConnection, QueryResult, TableData, TableInfo, ColumnInfo } from "../types";
+import type { SavedConnection, QueryResult, TableData, TableInfo, ColumnInfo, SavedQuery } from "../types";
+import { toast } from "../hooks/use-toast";
 
 export interface EditorTab {
   id: string;
@@ -12,6 +13,7 @@ export interface EditorTab {
   isLoading: boolean;
   error: string | null;
   connectionId: string | null;
+  savedQueryId?: string | null;
 }
 
 export interface SchemaNode {
@@ -29,6 +31,7 @@ export interface SessionTab {
   mode: "query" | "table";
   tableMeta: { schema: string; table: string; connectionId: string } | null;
   connectionId: string | null;
+  savedQueryId?: string | null;
 }
 
 interface AppState {
@@ -89,6 +92,26 @@ interface AppState {
   openCommandPalette: () => void;
   closeCommandPalette: () => void;
   toggleCommandPalette: () => void;
+
+  savedQueries: SavedQuery[];
+  saveQueryDialogOpen: boolean;
+  editingSavedQueryId: string | null;
+  saveQueryInitialSql: string;
+  saveChangesConfirmOpen: boolean;
+  saveChangesConfirmPayload: { savedQueryId: string; sql: string } | null;
+  loadSavedQueries: () => Promise<void>;
+  saveSavedQuery: (payload: { id?: string; name: string; sql: string; connectionId?: string | null }) => Promise<void>;
+  deleteSavedQuery: (id: string) => Promise<void>;
+  openSaveQueryDialog: (initialSql?: string, editingId?: string | null) => void;
+  closeSaveQueryDialog: () => void;
+  openSaveChangesConfirm: (savedQueryId: string, sql: string) => void;
+  closeSaveChangesConfirm: () => void;
+  confirmSaveChanges: () => Promise<void>;
+  openSavedQueryInEditor: (sql: string, savedQueryId?: string | null, savedQueryName?: string) => void;
+  runSavedQuery: (sql: string, savedQueryId?: string | null, savedQueryName?: string) => Promise<void>;
+  runQueryToActiveTab: () => Promise<void>;
+  tableInvalidationTrigger: { at: number; connectionId: string };
+  invalidateTableData: (connectionId: string) => void;
 
   restoreSession: () => Promise<void>;
   saveSession: () => void;
@@ -400,6 +423,178 @@ export const useAppStore = create<AppState>((set, get) => ({
   closeCommandPalette: () => set({ commandPaletteOpen: false }),
   toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
 
+  savedQueries: [],
+  saveQueryDialogOpen: false,
+  editingSavedQueryId: null,
+  saveQueryInitialSql: "",
+  saveChangesConfirmOpen: false,
+  saveChangesConfirmPayload: null,
+
+  loadSavedQueries: async () => {
+    if (!window.api?.savedQueries) return;
+    try {
+      const queries = await window.api.savedQueries.list();
+      set({ savedQueries: queries });
+    } catch (err) {
+      toast({ title: 'Failed to load saved queries', description: (err as Error).message, variant: 'destructive' });
+    }
+  },
+
+  saveSavedQuery: async (payload) => {
+    if (!window.api?.savedQueries) return;
+    try {
+      const saved = await window.api.savedQueries.save(payload);
+      set((s) => {
+        const tabs = s.tabs.map((t) => {
+          if (payload.id && t.savedQueryId === payload.id) {
+            return { ...t, title: saved.name };
+          }
+          if (!payload.id && t.id === s.activeTabId) {
+            return { ...t, savedQueryId: saved.id, title: saved.name };
+          }
+          return t;
+        });
+        return {
+          savedQueries: payload.id
+            ? s.savedQueries.map((q) => (q.id === payload.id ? saved : q))
+            : [saved, ...s.savedQueries.filter((q) => q.id !== saved.id)],
+          tabs,
+          saveQueryDialogOpen: false,
+          editingSavedQueryId: null,
+          saveQueryInitialSql: "",
+        };
+      });
+    } catch (err) {
+      toast({ title: 'Save failed', description: (err as Error).message, variant: 'destructive' });
+    }
+  },
+
+  deleteSavedQuery: async (id) => {
+    if (!window.api?.savedQueries) return;
+    try {
+      await window.api.savedQueries.delete(id);
+      set((s) => ({
+        savedQueries: s.savedQueries.filter((q) => q.id !== id),
+        tabs: s.tabs.map((t) =>
+          t.savedQueryId === id ? { ...t, savedQueryId: null } : t
+        ),
+      }));
+    } catch (err) {
+      toast({ title: 'Delete failed', description: (err as Error).message, variant: 'destructive' });
+    }
+  },
+
+  openSaveQueryDialog: (initialSql = "", editingId = null) => {
+    set({
+      saveQueryDialogOpen: true,
+      editingSavedQueryId: editingId,
+      saveQueryInitialSql: initialSql,
+    });
+  },
+
+  closeSaveQueryDialog: () => {
+    set({ saveQueryDialogOpen: false, editingSavedQueryId: null, saveQueryInitialSql: "" });
+  },
+
+  openSaveChangesConfirm: (savedQueryId, sql) => {
+    const saved = get().savedQueries.find((q) => q.id === savedQueryId);
+    if (saved && saved.sql.trim() === sql.trim()) return;
+    set({ saveChangesConfirmOpen: true, saveChangesConfirmPayload: { savedQueryId, sql } });
+  },
+
+  closeSaveChangesConfirm: () => {
+    set({ saveChangesConfirmOpen: false, saveChangesConfirmPayload: null });
+  },
+
+  confirmSaveChanges: async () => {
+    const payload = get().saveChangesConfirmPayload;
+    if (!payload || !window.api?.savedQueries) return;
+    const saved = get().savedQueries.find((q) => q.id === payload.savedQueryId);
+    if (!saved) {
+      set({ saveChangesConfirmOpen: false, saveChangesConfirmPayload: null });
+      toast({ title: 'Query was deleted', description: 'The saved query no longer exists.', variant: 'destructive' });
+      return;
+    }
+    await get().saveSavedQuery({
+      id: payload.savedQueryId,
+      name: saved.name,
+      sql: payload.sql.trim(),
+      connectionId: get().activeConnectionId ?? null
+    });
+    set({ saveChangesConfirmOpen: false, saveChangesConfirmPayload: null });
+  },
+
+  openSavedQueryInEditor: (sql, savedQueryId, savedQueryName) => {
+    const { tabs, addTab, setActiveTab } = get();
+    const existingTab = savedQueryId ? tabs.find((t) => t.savedQueryId === savedQueryId) : null;
+    if (existingTab) {
+      setActiveTab(existingTab.id);
+    } else {
+      const tabId = addTab({
+        sql,
+        savedQueryId: savedQueryId ?? null,
+        mode: 'query' as const,
+        title: savedQueryName ?? 'Query'
+      });
+      setActiveTab(tabId);
+    }
+  },
+
+  runSavedQuery: async (sql, _savedQueryId, _savedQueryName) => {
+    const { activeConnectionId, connectedIds, invalidateTableData } = get();
+    if (!activeConnectionId || !connectedIds.includes(activeConnectionId)) return;
+    const trimmed = sql.trim();
+    if (!trimmed) return;
+    try {
+      const result = await window.api.query.execute(activeConnectionId, trimmed);
+      await window.api.history.add({
+        connectionId: activeConnectionId,
+        sql: trimmed,
+        executedAt: Date.now(),
+        durationMs: result.durationMs,
+        rowCount: result.rowCount
+      });
+      const mutateCommands = ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE'];
+      if (mutateCommands.includes(result.command)) {
+        invalidateTableData(activeConnectionId);
+      }
+      toast({ title: 'Query ran', description: `${result.rowCount ?? 0} row${(result.rowCount ?? 0) !== 1 ? 's' : ''} affected` });
+    } catch (err) {
+      toast({ title: 'Query failed', description: (err as Error).message, variant: 'destructive' });
+    }
+  },
+
+  runQueryToActiveTab: async () => {
+    const { activeTabId, activeConnectionId, connectedIds, tabs, updateTab } = get();
+    const tab = tabs.find((t) => t.id === activeTabId);
+    if (!tab || !activeConnectionId || !connectedIds.includes(activeConnectionId)) return;
+    const sql = tab.sql.trim();
+    if (!sql) return;
+    updateTab(activeTabId!, { isLoading: true, error: null, result: null });
+    try {
+      const result = await window.api.query.execute(activeConnectionId, sql);
+      updateTab(activeTabId!, { result, isLoading: false });
+      await window.api.history.add({
+        connectionId: activeConnectionId,
+        sql,
+        executedAt: Date.now(),
+        durationMs: result.durationMs,
+        rowCount: result.rowCount,
+      });
+      const mutateCommands = ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE'];
+      if (mutateCommands.includes(result.command)) {
+        get().invalidateTableData(activeConnectionId);
+      }
+    } catch (err) {
+      updateTab(activeTabId!, { error: (err as Error).message, isLoading: false });
+    }
+  },
+
+  tableInvalidationTrigger: { at: 0, connectionId: '' },
+  invalidateTableData: (connectionId) => {
+    set({ tableInvalidationTrigger: { at: Date.now(), connectionId } });
+  },
+
   restoreSession: async () => {
     if (!window.api?.session) return;
     const session = await window.api.session.get();
@@ -419,18 +614,24 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // Now restore tabs — table browsers will mount and fetch against
     // the already-live connection.
-    const restoredTabs: EditorTab[] = session.tabs.map((st: SessionTab) => ({
-      id: st.id,
-      title: st.title,
-      sql: st.sql,
-      result: null,
-      tableData: null,
-      mode: st.mode,
-      tableMeta: st.tableMeta,
-      isLoading: false,
-      error: null,
-      connectionId: st.connectionId,
-    }));
+    const savedQueryIds = new Set(get().savedQueries.map((q) => q.id));
+    const restoredTabs: EditorTab[] = session.tabs.map((st: SessionTab) => {
+      const savedQueryId = st.savedQueryId ?? null;
+      const orphaned = savedQueryId != null && !savedQueryIds.has(savedQueryId);
+      return {
+        id: st.id,
+        title: st.title,
+        sql: st.sql,
+        result: null,
+        tableData: null,
+        mode: st.mode,
+        tableMeta: st.tableMeta,
+        isLoading: false,
+        error: null,
+        connectionId: st.connectionId,
+        savedQueryId: orphaned ? null : savedQueryId,
+      };
+    });
 
     set({
       tabs: restoredTabs,
@@ -448,6 +649,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       mode: t.mode,
       tableMeta: t.tableMeta,
       connectionId: t.connectionId,
+      savedQueryId: t.savedQueryId ?? null,
     }));
     window.api.session.save({
       activeConnectionId,

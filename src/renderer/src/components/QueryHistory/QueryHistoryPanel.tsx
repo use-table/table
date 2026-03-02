@@ -24,7 +24,7 @@ export function QueryHistoryPanel(): JSX.Element {
   const handleRestore = (entry: QueryHistoryEntry): void => {
     const activeTab = tabs.find((t) => t.id === activeTabId)
     if (activeTab && activeTab.mode === 'query') {
-      updateTab(activeTab.id, { sql: entry.sql })
+      updateTab(activeTab.id, { sql: entry.sql, savedQueryId: null })
     } else {
       addTab({ sql: entry.sql, title: 'Query', mode: 'query' })
     }

@@ -9,6 +9,7 @@ import { registerQueryHandlers } from './ipc/query'
 import { registerSchemaHandlers } from './ipc/schema'
 import { registerExportHandlers } from './ipc/export'
 import { registerHistoryHandlers } from './ipc/history'
+import { registerSavedQueriesHandlers } from './ipc/savedQueries'
 import { registerSettingsHandlers, applyStoredTheme } from './ipc/settings'
 import { buildAppMenu } from './menu'
 import { disconnectAll } from './db/client'
@@ -71,6 +72,7 @@ app.whenReady().then(() => {
   registerSchemaHandlers()
   registerExportHandlers()
   registerHistoryHandlers()
+  registerSavedQueriesHandlers()
   registerSettingsHandlers()
 
   createWindow()

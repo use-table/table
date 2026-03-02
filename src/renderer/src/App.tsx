@@ -4,6 +4,7 @@ import { cn } from './lib/utils'
 import { useAppStore } from './store/useAppStore'
 import { ConnectionList } from './components/Sidebar/ConnectionList'
 import { SchemaTree } from './components/Sidebar/SchemaTree'
+import { SavedQueriesPanel } from './components/Sidebar/SavedQueriesPanel'
 import { TitleBar } from './components/TitleBar/TitleBar'
 import { QueryHistoryPanel } from './components/QueryHistory/QueryHistoryPanel'
 import { EditorTab } from './components/QueryEditor/EditorTab'
@@ -11,6 +12,8 @@ import { QueryResultPanel } from './components/ResultsPanel/QueryResultPanel'
 import { StatusBar } from './components/StatusBar/StatusBar'
 import { ConnectionDialog } from './components/Dialogs/ConnectionDialog'
 import { SettingsDialog } from './components/Dialogs/SettingsDialog'
+import { SaveQueryDialog } from './components/Dialogs/SaveQueryDialog'
+import { ConfirmSaveChangesDialog } from './components/Dialogs/ConfirmSaveChangesDialog'
 import { CommandPalette } from './components/CommandPalette/CommandPalette'
 import { Toaster } from './components/ui/toaster'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from './components/ui/resizable'
@@ -18,7 +21,7 @@ import { TooltipProvider } from './components/ui/tooltip'
 import { initAnalytics, setAnalyticsEnabled, trackEvent } from './lib/analytics'
 
 export default function App(): JSX.Element {
-  const { theme, setTheme, setUpdaterState, openSettings, loadSettings, loadConnections, restoreSession, historyPanelOpen } =
+  const { theme, setTheme, setUpdaterState, openSettings, loadSettings, loadConnections, loadSavedQueries, restoreSession, historyPanelOpen } =
     useAppStore()
 
   const inspectedRow = useAppStore((s) => s.inspectedRow)
@@ -47,6 +50,7 @@ export default function App(): JSX.Element {
     ;(async () => {
       await loadSettings()
       await loadConnections()
+      if (window.api.savedQueries) await loadSavedQueries()
       await restoreSession()
       const settings = await window.api.settings.get()
       initAnalytics(settings.analyticsEnabled)
@@ -122,6 +126,7 @@ export default function App(): JSX.Element {
           >
             <ConnectionList />
             <SchemaTree />
+            <SavedQueriesPanel />
           </ResizablePanel>
 
           <ResizableHandle />
@@ -158,6 +163,8 @@ export default function App(): JSX.Element {
         <StatusBar />
         <ConnectionDialog />
         <SettingsDialog />
+        <SaveQueryDialog />
+        <ConfirmSaveChangesDialog />
         <CommandPalette />
         <Toaster />
       </div>
